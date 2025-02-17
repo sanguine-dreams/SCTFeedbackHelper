@@ -23,15 +23,15 @@ module.exports = {
             const response = await fetch(file.url);
             const buffer = await response.arrayBuffer();
             const workbook = xlsx.read(buffer, { type: 'buffer' });
-            const sheetName = workbook.SheetNames[0]; // Assuming first sheet
-            const sheet = workbook.Sheets[sheetName];
-            const jsonData = xlsx.utils.sheet_to_json(sheet);
 
-            // Store in global variable
-            global.storedData = jsonData;
-            console.log("✅ Data Stored in global.storedData:", global.storedData);
+            global.storedData = {}; // Store all sheets
+            workbook.SheetNames.forEach(sheetName => {
+                global.storedData[sheetName] = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+            });
 
-            await interaction.reply({ content: `✅ Successfully uploaded and stored ${jsonData.length} rows of feedback.`, ephemeral: true });
+            console.log("✅ Data stored:", global.storedData);
+
+            await interaction.reply({ content: `✅ Successfully uploaded and stored data from ${workbook.SheetNames.length} sheets.`, ephemeral: true });
         } catch (error) {
             console.error(error);
             await interaction.reply({ content: '❌ Failed to process the Excel file.', ephemeral: true });
