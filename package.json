@@ -12,6 +12,8 @@
   "dependencies": {
     "discord.js": "^14.18.0",
     "fs": "^0.0.1-security",
+    "node-fetch": "^3.3.2",
+    "sqlite3": "^5.1.7",
     "xlsx": "^0.18.5"
   }
 }
