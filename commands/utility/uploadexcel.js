@@ -29,8 +29,6 @@ module.exports = {
                 global.storedData[sheetName] = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
             });
 
-            console.log("✅ Data stored:", global.storedData);
-
             await interaction.reply({ content: `✅ Successfully uploaded and stored data from ${workbook.SheetNames.length} sheets.`, ephemeral: true });
         } catch (error) {
             console.error(error);

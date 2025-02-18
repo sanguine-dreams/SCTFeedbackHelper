@@ -8,6 +8,7 @@ module.exports = {
     async execute(interaction) {
         const user = interaction.user;
         const discordUsername = user.username;
+        
 
         console.log("🔍 Checking global.storedData:", global.storedData);
 
@@ -15,37 +16,45 @@ module.exports = {
             return interaction.reply({ content: '⚠ No feedback data available. An admin must upload an Excel file first.', ephemeral: true });
         }
 
-        const userMappingSheet = global.storedData["UserMapping"];
-        const feedbackSheet = global.storedData["Feedback"];
+        const userMappingSheet = global.storedData["Discord Link"];
+        const daTechnical = global.storedData["DA Technical"];
+        const daBusiness = global.storedData["DA Business"];
+        const equityTraining = global.storedData["Equity Training"];
+        const careerDevelopmentTraining = global.storedData["CDT"];
+        const progressNotes = global.storedData["Progress Notes"];
+        const officialWarning = global.storedData["Offical Warning"];
+        
 
-        if (!userMappingSheet || !feedbackSheet) {
+        if (!userMappingSheet || !daBusiness || !equityTraining || !careerDevelopmentTraining || !progressNotes || !officialWarning || !daTechnical ) {
             return interaction.reply({ content: '⚠ Missing required sheets in the Excel file.', ephemeral: true });
         }
 
-        // Step 1: Find Student Name from Discord Username
-        const userEntry = userMappingSheet.find(row => row.DiscordUsername?.toLowerCase() === discordUsername.toLowerCase());
+        // Find the student's name based on their Discord username
+        const userEntry = userMappingSheet.find(entry =>
+            entry.DiscordUsername.toLowerCase() === interaction.user.username.toLowerCase()
+        );
+
         if (!userEntry) {
-            return interaction.reply({ content: '⚠ No student name found for your Discord username.', ephemeral: true });
+            return interaction.reply({ content: "No linked student name found for you.", ephemeral: true });
         }
 
-        const studentName = userEntry.StudentName;
-        console.log(`🔍 Found Student Name: ${studentName}`);
+        const studentName = userEntry.StudentName.toLowerCase();  // Normalize case
+        
 
-        // Step 2: Find all feedback for that Student Name
-        const feedbackEntries = feedbackSheet.filter(row => row.StudentName?.toLowerCase() === studentName.toLowerCase());
+        const feedbackRows = officialWarning.filter(entry =>
+            entry['Student Name'].toLowerCase() === studentName
+        );
 
-        if (feedbackEntries.length === 0) {
-            return interaction.reply({ content: '⚠ No feedback found for you.', ephemeral: true });
+        if (feedbackRows.length === 0) {
+            return interaction.reply({ content: "No feedback available for you.", ephemeral: true });
         }
 
-        // Step 3: Format feedback response
-        let feedbackMessage = `📩 **Your Feedback:**\n`;
-        feedbackEntries.forEach((entry, index) => {
-            feedbackMessage += `\n**Entry ${index + 1}:**\n${entry.Feedback || "No feedback available."}\n`;
-        });
-
+// Format only the required columns (e.g., 'Type of Warning' and 'Note')
+        const formattedFeedback = feedbackRows.map(row =>
+            `⚠️ Warning Type: ${row['Type of Warning']}\n📝 Note: ${row.Note}`
+        ).join("\n\n");
         try {
-            await user.send(feedbackMessage);
+            await user.send(formattedFeedback);
             await interaction.reply({ content: '✅ Your feedback has been sent to your DMs.', ephemeral: true });
         } catch (error) {
             console.error(error);
