@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const sqlite3 = require('sqlite3').verbose();
 
 // Database connection
-const db = new sqlite3.Database('./database.db');
+const db = new sqlite3.Database('../../feedback.db');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -10,17 +10,19 @@ module.exports = {
         .setDescription('Get your feedback from the uploaded Excel file'),
 
     async execute(interaction) {
+        await interaction.deferReply({ ephemeral: true });
+
         const user = interaction.user;
         const discordUsername = user.username;
 
         try {
-            // Query the "Discord Link" table to get the student name
+            // Step 1: Get student name from Discord Link table
             const studentName = await getStudentName(discordUsername);
             if (!studentName) {
-                return interaction.reply({ content: "⚠ No linked student name found for you.", ephemeral: true });
+                return interaction.editReply({ content: "⚠ No linked student name found for you." });
             }
 
-            // Tables to search for feedback
+            // Step 2: Define tables to check for feedback
             const tables = [
                 'DA Technical',
                 'DA Business',
@@ -33,96 +35,81 @@ module.exports = {
             let formattedFeedback = '';
             let feedbackFound = false;
 
-            // Loop through each table and get rows matching the student name
+            // Step 3: Loop through tables and retrieve feedback
             for (let table of tables) {
-                const rows = await getFeedbackFromTable(table, studentName);
-
-                if (rows.length > 0) {
-                    feedbackFound = true;
-                    formattedFeedback += formatFeedback(rows, table);
+                try {
+                    const rows = await getFeedbackFromTable(table, studentName);
+                    if (rows.length > 0) {
+                        feedbackFound = true;
+                        formattedFeedback += formatFeedback(rows, table);
+                    }
+                } catch (err) {
+                    console.warn(`⚠ Skipping table "${table}" due to error: ${err.message}`);
                 }
             }
 
             if (!feedbackFound) {
-                return interaction.reply({ content: "No feedback available for you.", ephemeral: true });
+                return interaction.editReply({ content: "No feedback available for you." });
             }
 
-            // Send feedback to the user's DM
+            // Step 4: Send feedback via DM
             await user.send(formattedFeedback);
-            await interaction.reply({ content: '✅ Your feedback has been sent to your DMs.', ephemeral: true });
+            await interaction.editReply({ content: '✅ Your feedback has been sent to your DMs.' });
 
         } catch (error) {
             console.error(error);
-            await interaction.reply({ content: '❌ An error occurred while fetching your feedback.', ephemeral: true });
+            await interaction.editReply({ content: '❌ An error occurred while fetching your feedback.' });
         }
     }
 };
 
-// Function to get the student name based on the Discord username
-async function getStudentName(discordUsername) {
+// Function to get the student name from Discord Link table
+function getStudentName(discordUsername) {
     return new Promise((resolve, reject) => {
         const query = `SELECT StudentName FROM "Discord Link" WHERE DiscordUsername = ?`;
         db.get(query, [discordUsername], (err, row) => {
-            if (err) reject(err);
+            if (err) return reject(err);
             resolve(row ? row.StudentName : null);
         });
     });
 }
 
-// Function to get feedback rows from a specific table based on the student name
-async function getFeedbackFromTable(table, studentName) {
+// Function to get feedback rows from a specific table
+function getFeedbackFromTable(table, studentName) {
     return new Promise((resolve, reject) => {
-        const query = `SELECT * FROM ${table} WHERE "Student Name" = ?`;
+        const query = `SELECT * FROM "${table}" WHERE "Student Name" = ?`;
+
         db.all(query, [studentName], (err, rows) => {
-            if (err) reject(err);
+            if (err) {
+                console.warn(`⚠ Table "${table}" may not exist or have a different structure.`);
+                return reject(err);
+            }
             resolve(rows);
         });
     });
 }
 
-// Function to format feedback based on the table and rows
+// Function to format feedback
 function formatFeedback(rows, table) {
-    let formattedFeedback = '';
+    let formattedFeedback = `📌 **${table} Feedback**\n`;
 
     rows.forEach(row => {
         let feedback = '';
 
         if (table === "Offical Warning" && row['Student Name']) {
-            feedback += `Official Warnings:\n`;
-            feedback += `⚠️ Student Name: ${row['Student Name']}\n`;
-            feedback += `📅 Date of Warning: ${row['Date of Warning'] || 'N/A'}\n`;
+            feedback += `⚠️ **Official Warnings:**\n`;
+            feedback += `📅 Date: ${row['Date of Warning'] || 'N/A'}\n`;
             feedback += `📝 Note: ${row['Note'] || 'N/A'}\n\n`;
         }
 
-        if (table === "DA Technical" && (row['Absent'] || row['Excused absence'] || row['Late'])) {
-            feedback += `DA Technical:\n`;
+        if (["DA Technical", "DA Business", "Equity Training", "CDT"].includes(table)) {
+            feedback += `${table}:\n`;
             feedback += `❌ Absent: ${row['Absent'] || 'N/A'}\n`;
             feedback += `✅ Excused: ${row['Excused absence'] || 'N/A'}\n`;
             feedback += `⏰ Late: ${row['Late'] || 'N/A'}\n\n`;
         }
 
-        if (table === "DA Business" && (row['Absent'] || row['Excused absence'] || row['Late'])) {
-            feedback += `DA Business:\n`;
-            feedback += `❌ Absent: ${row['Absent'] || 'N/A'}\n`;
-            feedback += `✅ Excused: ${row['Excused absence'] || 'N/A'}\n`;
-            feedback += `⏰ Late: ${row['Late'] || 'N/A'}\n\n`;
-        }
-
-        if (table === "Equity Training" && (row['Absent'] || row['Excused absence'] || row['Late'])) {
-            feedback += `Equity Training:\n`;
-            feedback += `❌ Absent: ${row['Absent'] || 'N/A'}\n`;
-            feedback += `✅ Excused: ${row['Excused absence'] || 'N/A'}\n`;
-            feedback += `⏰ Late: ${row['Late'] || 'N/A'}\n\n`;
-        }
-
-        if (table === "CDT" && (row['Absent'] || row['Excused absence'] || row['Late'])) {
-            feedback += `Career Development Training:\n`;
-            feedback += `❌ Absent: ${row['Absent'] || 'N/A'}\n`;
-            feedback += `✅ Excused: ${row['Excused absence'] || 'N/A'}\n`;
-            feedback += `⏰ Late: ${row['Late'] || 'N/A'}\n\n`;
-        }
-
-        if (table === "Progress Notes" && (row['Week 1'] || row['Week 2'] || row['Week 3'] || row['Week 4'])) {
+        if (table === "Progress Notes") {
             feedback += `Progress Notes:\n`;
             feedback += `📅 Week 1: ${row['Week 1'] || 'N/A'}\n`;
             feedback += `📅 Week 2: ${row['Week 2'] || 'N/A'}\n`;
@@ -133,5 +120,5 @@ function formatFeedback(rows, table) {
         formattedFeedback += feedback;
     });
 
-    return formattedFeedback;
+    return formattedFeedback || 'No specific feedback available.\n\n';
 }
