@@ -16,7 +16,7 @@ module.exports = {
             db.get(linkQuery, [discordUsername], (err, row) => {
                 if (err) {
                     console.error('Error querying DiscordLink:', err);
-                    interaction.editReply('❌ Error retrieving student link');
+                    interaction.editReply('❌ Error retrieving student link.');
                     return;
                 }
 
@@ -34,12 +34,12 @@ module.exports = {
                 db.all(getTablesQuery, [], (err, tables) => {
                     if (err) {
                         console.error('Error retrieving table names:', err);
-                        interaction.editReply('❌ Error retrieving tables');
+                        interaction.editReply('❌ Error retrieving tables.');
                         return;
                     }
 
                     if (!tables.length) {
-                        interaction.editReply('⚠ No tables found in the database');
+                        interaction.editReply('⚠ No tables found in the database.');
                         return;
                     }
 
@@ -62,9 +62,6 @@ module.exports = {
                                 }
                                 return;
                             }
-
-                            // Debug: Log the columns for the table
-                            console.log(`Columns in table "${tableName}":`, columns.map(c => c.name));
 
                             // Check if the table has a "StudentName" column
                             const hasStudentNameColumn = columns.some(column => column.name === 'StudentName');
@@ -89,7 +86,6 @@ module.exports = {
                                     return;
                                 }
 
-                                // Debug: Log the results of the query for the current table
                                 if (rows.length > 0) {
                                     console.log(`Rows found in table "${tableName}" for StudentName = ${studentName}:`, rows);
                                     results.push({ table: tableName, rows });
@@ -114,24 +110,34 @@ module.exports = {
                     return;
                 }
 
-                let message = `📋 **Results for ${studentName}:**\n\n`;
-                for (const result of results) {
-                    message += `**Table: ${result.table}**\n`;
-                    result.rows.forEach(row => {
+                let message = `📋 **Results for ${studentName}:**\n`;
+
+                results.forEach((result, index) => {
+                    message += `\n✨ **Section: ${result.table}**\n`;
+                    result.rows.forEach((row, rowIndex) => {
+                        message += `\n🔹 **Entry ${index + 1}.${rowIndex + 1}**\n`;
+
                         Object.entries(row).forEach(([key, value]) => {
                             if (key !== 'StudentName') {
-                                message += `**${key}:** ${value || 'N/A'}\n`;
+                                message += `• **${key}:** \`${value || 'N/A'}\`\n`;
                             }
                         });
-                        message += '\n';
                     });
-                }
+                });
 
-                interaction.editReply(message);
+                // Providing the user a prettier message via DM
+                interaction.user.send(message)
+                    .then(() => {
+                        interaction.editReply('✅ Feedback has been sent to your direct messages!');
+                    })
+                    .catch((err) => {
+                        console.error('Failed to send DM:', err);
+                        interaction.editReply('⚠ Failed to send feedback via DM. Make sure your DMs are enabled!');
+                    });
             }
         } catch (err) {
             console.error('Unexpected error:', err);
-            interaction.editReply('❌ An unexpected error occurred');
+            interaction.editReply('❌ An unexpected error occurred.');
         }
     }
 };
