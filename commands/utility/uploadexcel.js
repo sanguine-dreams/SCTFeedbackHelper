@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const xlsx = require('xlsx');
-const db = require('../../database'); // Import the db instance
+const db = require('../../database');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -15,18 +15,18 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true }); // Acknowledge the command
+        await interaction.deferReply({ ephemeral: true });
         const file = interaction.options.getAttachment('file');
         const targetDir = path.join(__dirname, 'uploads');
 
         if (!fs.existsSync(targetDir)) {
-            fs.mkdirSync(targetDir);
+            fs.mkdirSync(targetDir, { recursive: true });
         }
 
         const filePath = path.join(targetDir, file.name);
 
         try {
-            // Download the file
+            // Download file
             await new Promise((resolve, reject) => {
                 https.get(file.url, (response) => {
                     const fileStream = fs.createWriteStream(filePath);
@@ -36,133 +36,161 @@ module.exports = {
                 }).on('error', reject);
             });
 
-            console.log(`File saved to: ${filePath}`);
-
-            // Read the Excel file
+            // Process Excel
             const workbook = xlsx.readFile(filePath);
 
-            // Loop through all sheets
             for (const sheetName of workbook.SheetNames) {
+                const formattedSheetName = sheetName.replace(/\s+/g, '_');
                 const sheet = workbook.Sheets[sheetName];
 
-                // Read the sheet as raw rows (no headers)
                 const jsonData = xlsx.utils.sheet_to_json(sheet, {
-                    header: 1, // Return all rows as arrays (no headers)
+                    header: 1,
                     raw: false,
                     defval: null
                 });
 
-                // Find the header row dynamically
-                let headerRowIndex = -1;
-                for (let i = 0; i < jsonData.length; i++) {
-                    const row = jsonData[i].map(cell =>
-                        cell ? cell.toString().trim().toLowerCase() : ""
-                    );
-                    if (row.includes("student name")) {
-                        headerRowIndex = i;
-                        break;
-                    }
-                }
-
-                // Skip sheet if "Student Name" header is not found
-                if (headerRowIndex === -1) {
-                    console.log(`Skipping sheet "${sheetName}" - No "Student Name" found.`);
-                    continue;
-                }
-
-                // Extract headers from the identified row
-                let headers = jsonData[headerRowIndex].map((h, index) =>
-                    h ? h.toString().trim() : null
+                // Find header row
+                let headerRowIndex = jsonData.findIndex(row =>
+                    row.some(cell => cell?.toString().trim().toLowerCase() === "student name")
                 );
 
-                // Remove completely empty columns
-                const validColumns = headers.map((h, index) => (h ? index : null)).filter(i => i !== null);
-                headers = headers.filter(h => h !== null);
-
-                // If no valid headers remain, skip this sheet
-                if (headers.length === 0) {
-                    console.log(`Skipping sheet "${sheetName}" - No valid headers found.`);
+                if (headerRowIndex === -1) {
+                    console.log(`Skipping ${sheetName}: No student name header`);
                     continue;
                 }
 
-                // Extract data rows (skip empty rows)
-                const dataRows = jsonData.slice(headerRowIndex + 1)
-                    .map(row => validColumns.map(colIndex => row[colIndex] || null)) // Only keep valid columns
-                    .filter(row => row.some(cell => cell !== null && cell.toString().trim() !== ""));
+                // Check if the first column is purely numbers (serial numbers)
+                const isFirstColumnNumeric = jsonData
+                    .slice(headerRowIndex + 1) // Ignore headers, check data rows
+                    .every(row => !isNaN(row[0]) && row[0] !== null && row[0] !== '');
 
-                // Ensure the table exists before inserting data
-                await createTableIfNotExists(sheetName, headers);
+                // If first column is numeric, ignore it; otherwise, keep all columns
+                const adjustedJsonData = jsonData.map(row => (isFirstColumnNumeric ? row.slice(1) : row));
 
-                // Insert data (ensure it matches header length)
+                // Process headers
+                let headers = adjustedJsonData[headerRowIndex]
+                    .map(h => h?.toString().trim().replace(/[^a-zA-Z0-9_]/g, '') || null)
+                    .filter(h => h !== null);
+
+                if (headers.length === 0) {
+                    console.log(`Skipping ${sheetName}: No valid headers`);
+                    continue;
+                }
+
+                // Process data rows
+                const dataRows = adjustedJsonData.slice(headerRowIndex + 1)
+                    .map(row => row.map(cell => cell?.toString().trim() || null))
+                    .filter(row => row.some(cell => cell));
+
+                if (dataRows.length === 0) {
+                    console.log(`Skipping ${sheetName}: No data rows`);
+                    continue;
+                }
+
+                // Create table
+                await createTable(formattedSheetName, headers);
+
+                // Insert data
                 for (const row of dataRows) {
                     const rowData = headers.reduce((acc, header, index) => {
-                        acc[header] = row[index]?.toString().trim() || null;
+                        acc[header] = row[index] || null;
                         return acc;
                     }, {});
 
-                    await insertData(sheetName, rowData, headers);
-                }
+                    const studentName = rowData["Student_Name"] || rowData["StudentName"];
+                    if (!studentName) {
+                        console.log(`Skipping row in ${formattedSheetName}: Missing student name`);
+                        continue;
+                    }
 
-                console.log(`✅ Successfully processed sheet: ${sheetName}`);
+                    await insertOrUpdateData(formattedSheetName, studentName, rowData, headers);
+                }
+                console.log(`✅ Processed ${formattedSheetName}`);
             }
 
-            await interaction.editReply({ content: '✅ File uploaded and processed successfully!' });
-
+            await interaction.editReply('✅ File processed successfully!');
         } catch (err) {
-            console.error('Error processing the file:', err);
-            await interaction.editReply({ content: '❌ Failed to process the file.' });
+            console.error('Error:', err);
+            await interaction.editReply('❌ Processing failed');
+        } finally {
+            fs.unlinkSync(filePath); // Cleanup file
         }
     }
 };
 
-// Function to create a table if it doesn't exist
-function createTableIfNotExists(tableName, columns) {
+// Database functions
+async function createTable(tableName, headers) {
     return new Promise((resolve, reject) => {
-        const query = `PRAGMA table_info(\`${tableName}\`)`; // Updated query syntax
+        db.run(`PRAGMA foreign_keys = OFF`, (err) => {
+            if (err) return reject(err);
 
-        db.all(query, (err, rows) => {
-            if (err) {
-                console.error('Error checking table info:', err);
-                return reject(err);
-            }
+            const columns = headers.map(h => `"${h}" TEXT`).join(', ');
+            const query = `CREATE TABLE IF NOT EXISTS "${tableName}" (${columns})`;
 
-            // If the table doesn't exist, create it
-            if (rows.length === 0) {
-                console.log(`Table "${tableName}" does not exist, creating it.`);
-                const columnsDefinition = columns.map(col => `"${col}" TEXT`).join(', ');
-                const createQuery = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (${columnsDefinition})`;
-
-                db.run(createQuery, (createErr) => {
-                    if (createErr) {
-                        console.error('Error creating table:', createErr);
-                        return reject(createErr);
-                    }
-                    console.log(`Table "${tableName}" created successfully.`);
+            db.run(query, (err) => {
+                if (err) reject(err);
+                else {
+                    console.log(`Table ${tableName} created/verified`);
                     resolve();
-                });
-            } else {
-                console.log(`Table "${tableName}" already exists.`);
-                resolve(); // Table already exists, resolve the promise
-            }
+                }
+            });
         });
     });
 }
 
-// Function to insert data into the table
-function insertData(tableName, rowData, headers) {
+async function insertOrUpdateData(table, studentName, rowData, headers) {
     return new Promise((resolve, reject) => {
-        const columns = headers.map(h => `"${h}"`).join(', ');
-        const placeholders = headers.map(() => '?').join(', ');
-        const values = headers.map(h => rowData[h]);
+        db.get(`SELECT 1 FROM "${table}" WHERE "Student_Name" = ? OR "StudentName" = ?`,
+            [studentName, studentName],
+            async (err, row) => {
+                if (err) return reject(err);
 
-        const query = `INSERT INTO \`${tableName}\` (${columns}) VALUES (${placeholders})`;
+                if (row) {
+                    const setClause = headers
+                        .filter(h => h !== 'Student_Name' && h !== 'StudentName')
+                        .map(h => `"${h}" = ?`)
+                        .join(', ');
 
-        db.run(query, values, (err) => {
-            if (err) {
-                console.error('Error inserting data:', err);
-                return reject(err);
+                    const values = headers
+                        .filter(h => h !== 'Student_Name' && h !== 'StudentName')
+                        .map(h => rowData[h]);
+
+                    values.push(studentName);
+
+                    if (setClause.trim()) {
+                        db.run(
+                            `UPDATE "${table}" SET ${setClause} WHERE "Student_Name" = ? OR "StudentName" = ?`,
+                            values,
+                            (err) => {
+                                if (err) reject(err);
+                                else {
+                                    console.log(`🔄 Updated ${studentName} in ${table}`);
+                                    resolve();
+                                }
+                            }
+                        );
+                    } else {
+                        console.log(`⚠ Skipping update: No valid columns to update for ${studentName}`);
+                        resolve();
+                    }
+
+                } else {
+                    const columns = headers.map(h => `"${h}"`).join(', ');
+                    const placeholders = headers.map(() => '?').join(', ');
+
+                    db.run(
+                        `INSERT INTO "${table}" (${columns}) VALUES (${placeholders})`,
+                        headers.map(h => rowData[h]),
+                        (err) => {
+                            if (err) reject(err);
+                            else {
+                                console.log(`✅ Inserted ${studentName} into ${table}`);
+                                resolve();
+                            }
+                        }
+                    );
+                }
             }
-            resolve();
-        });
+        );
     });
 }

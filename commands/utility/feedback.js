@@ -24,12 +24,12 @@ module.exports = {
 
             // Step 2: Define tables to check for feedback
             const tables = [
-                'DA Technical',
-                'DA Business',
-                'Equity Training',
-                'CDT',
-                'Progress Notes',
-                'Offical Warning'
+                'datechnical',
+                'dabusiness',
+                'equitytraining',
+                'cdt',
+                'progressnotes',
+                'officalwarning'
             ];
 
             let formattedFeedback = '';
@@ -66,7 +66,7 @@ module.exports = {
 // Function to get the student name from Discord Link table
 function getStudentName(discordUsername) {
     return new Promise((resolve, reject) => {
-        const query = `SELECT StudentName FROM "Discord Link" WHERE DiscordUsername = ?`;
+        const query = `SELECT "Student Name" FROM discordlink WHERE DiscordUsername = ?`;
         db.get(query, [discordUsername], (err, row) => {
             if (err) return reject(err);
             resolve(row ? row.StudentName : null);
@@ -96,20 +96,20 @@ function formatFeedback(rows, table) {
     rows.forEach(row => {
         let feedback = '';
 
-        if (table === "Offical Warning" && row['Student Name']) {
+        if (table === "officalwarning" && row['Student Name']) {
             feedback += `⚠️ **Official Warnings:**\n`;
             feedback += `📅 Date: ${row['Date of Warning'] || 'N/A'}\n`;
             feedback += `📝 Note: ${row['Note'] || 'N/A'}\n\n`;
         }
 
-        if (["DA Technical", "DA Business", "Equity Training", "CDT"].includes(table)) {
+        if (["datechnical", "dabusiness", "equitytraining", "cdt"].includes(table)) {
             feedback += `${table}:\n`;
             feedback += `❌ Absent: ${row['Absent'] || 'N/A'}\n`;
             feedback += `✅ Excused: ${row['Excused absence'] || 'N/A'}\n`;
             feedback += `⏰ Late: ${row['Late'] || 'N/A'}\n\n`;
         }
 
-        if (table === "Progress Notes") {
+        if (table === "progressnotes") {
             feedback += `Progress Notes:\n`;
             feedback += `📅 Week 1: ${row['Week 1'] || 'N/A'}\n`;
             feedback += `📅 Week 2: ${row['Week 2'] || 'N/A'}\n`;
