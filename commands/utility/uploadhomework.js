@@ -119,15 +119,20 @@ module.exports = {
 // Database functions
 async function createTable(tableName, headers) {
     return new Promise((resolve, reject) => {
-        const columns = headers.map(h => `"${h}" TEXT`).join(', ');
-        const query = `CREATE TABLE IF NOT EXISTS "${tableName}" (${columns})`;
+        const dropQuery = `DROP TABLE IF EXISTS "${tableName}"`;
+        db.run(dropQuery, (dropErr) => {
+            if (dropErr) return reject(dropErr);
 
-        db.run(query, (err) => {
-            if (err) reject(err);
-            else {
-                console.log(`Table ${tableName} created/verified`);
-                resolve();
-            }
+            const columns = headers.map(h => `"${h}" TEXT`).join(', ');
+            const createQuery = `CREATE TABLE "${tableName}" (${columns})`;
+
+            db.run(createQuery, (createErr) => {
+                if (createErr) reject(createErr);
+                else {
+                    console.log(`✅ Table ${tableName} recreated`);
+                    resolve();
+                }
+            });
         });
     });
 }
