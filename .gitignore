@@ -7,4 +7,4 @@ config.json
 node_modules
 <<<<<<< HEAD
 .env
-
+.env.dev

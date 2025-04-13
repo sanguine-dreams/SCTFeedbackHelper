@@ -1,11 +1,17 @@
-require('dotenv').config();
+if (!process.env.NODE_ENV) {
+    process.env.NODE_ENV = 'development'; // default to dev if not set
+}
+require('dotenv').config({
+    path: process.env.NODE_ENV === 'production' ? '.env' : '.env.dev'
+});
+
 const fs = require('node:fs');
 const path = require('node:path');
 
 const {Client, Collection, Events, GatewayIntentBits, MessageFlags} = require('discord.js');
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
-    console.error(`Error: DISCORD_TOKEN is not defined in the environment. ${token}`);
+    console.error(`Error: DISCORD_TOKEN is not defined in ${process.env.NODE_ENV}. ${token}`);
     process.exit(1); // Exit the process if token is missing
 }
 global.storedData = []; // Store parsed Excel data
@@ -14,9 +20,6 @@ const client = new Client({intents: [GatewayIntentBits.Guilds]});
 client.commands = new Collection();
 const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
-
-
-
 
 
 for (const folder of commandFolders) {

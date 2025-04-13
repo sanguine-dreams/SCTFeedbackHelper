@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const {SlashCommandBuilder} = require('@discordjs/builders');
 const db = require('../../database');
 
 module.exports = {
@@ -7,7 +7,7 @@ module.exports = {
         .setDescription('Retrieve homework feedback for a student based on Discord username'),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ephemeral: true});
         const discordUsername = interaction.user.username;
 
         try {
@@ -88,7 +88,7 @@ module.exports = {
 
                                 if (rows.length > 0) {
                                     console.log(`Rows found in table "${tableName}" for StudentName = ${studentName}:`, rows);
-                                    results.push({ table: tableName, rows });
+                                    results.push({table: tableName, rows});
                                 } else {
                                     console.log(`No rows found in table "${tableName}" for StudentName = ${studentName}`);
                                 }

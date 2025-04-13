@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const {SlashCommandBuilder} = require('@discordjs/builders');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
@@ -15,12 +15,12 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ephemeral: true});
         const file = interaction.options.getAttachment('file');
         const targetDir = path.join(__dirname, 'uploads');
 
         if (!fs.existsSync(targetDir)) {
-            fs.mkdirSync(targetDir, { recursive: true });
+            fs.mkdirSync(targetDir, {recursive: true});
         }
 
         const filePath = path.join(targetDir, file.name);

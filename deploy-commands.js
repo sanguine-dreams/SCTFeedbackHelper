@@ -1,6 +1,10 @@
-require('dotenv').config();
-const { REST, Routes } = require('discord.js');
-// ✅ Read from environment variables
+if (!process.env.NODE_ENV) {
+    process.env.NODE_ENV = 'development'; 
+}
+require('dotenv').config({
+    path: process.env.NODE_ENV === 'production' ? '.env' : '.env.dev'
+});
+const {REST, Routes} = require('discord.js');
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
@@ -33,8 +37,8 @@ const rest = new REST().setToken(token);
         console.log('Fetching and clearing existing commands...');
 
         // Optional: clear global and guild commands
-        await rest.put(Routes.applicationCommands(clientId), { body: [] });
-        await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [] });
+        await rest.put(Routes.applicationCommands(clientId), {body: []});
+        await rest.put(Routes.applicationGuildCommands(clientId, guildId), {body: []});
         console.log('Successfully cleared global and guild commands.');
 
         // Debug command list
@@ -43,7 +47,7 @@ const rest = new REST().setToken(token);
         // 🔄 Register fresh commands globally (not just one guild)
         const data = await rest.put(
             Routes.applicationCommands(clientId), // 🔁 GLOBAL registration
-            { body: commands }
+            {body: commands}
         );
         console.log(`✅ Successfully registered ${data.length} global commands.`);
         console.log(`⌛ Note: Global commands may take up to 1 hour to appear.`);
