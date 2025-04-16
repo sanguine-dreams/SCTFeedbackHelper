@@ -1,31 +1,35 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const db = require('../../database');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('cleardatabase')
-        .setDescription('⚠️ Drops all tables from the database (use with caution!)'),
+        .setDescription('⚠️ Drops all tables from the database (use with caution!)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator), // Only admins see it
 
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true });
 
+        // Double check in case permission override fails
+        if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+            return interaction.editReply('🚫 You must be an administrator to use this command.');
+        }
+
         try {
-            // Get all table names
             db.all("SELECT name FROM sqlite_master WHERE type='table'", async (err, tables) => {
                 if (err) {
                     console.error('Error fetching tables:', err);
-                    await interaction.editReply('❌ Failed to fetch tables.');
-                    return;
+                    return interaction.editReply('❌ Failed to fetch tables.');
                 }
 
-                const tableNames = tables.map(t => t.name).filter(name => name !== 'sqlite_sequence');
+                const tableNames = tables
+                    .map(t => t.name)
+                    .filter(name => name !== 'sqlite_sequence');
 
                 if (tableNames.length === 0) {
-                    await interaction.editReply('ℹ️ No tables to drop.');
-                    return;
+                    return interaction.editReply('ℹ️ No tables to drop.');
                 }
 
-                // Drop each table
                 for (const name of tableNames) {
                     await new Promise((resolve, reject) => {
                         db.run(`DROP TABLE IF EXISTS "${name}"`, err => {
